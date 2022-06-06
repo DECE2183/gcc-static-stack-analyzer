@@ -8,6 +8,7 @@ import (
   "regexp"
   "strings"
   "sort"
+  "time"
   // "strconv"
 )
 
@@ -21,13 +22,14 @@ type StackCall struct {
   line int
   column int
   memUsage int
+  memUsagePercent float32
   fileName string
   entryName string
   qualifiers string
 }
 
 func stringUnspace(s string) string {
-  re, _ := regexp.Compile(`[a-zA-Z0-9:_/.-]+`)
+  re, _ := regexp.Compile(`\S+`) //(`[a-zA-Z0-9:_/.-=%+]+`)
   strs := re.FindAllString(s, -1)
   return strings.Join(strs, " ")
 }
@@ -105,10 +107,14 @@ func main() {
 
   totalUsage := 0
   for i, call := range suCalls {
-    fmt.Printf("% 3d: % 5d B %s->%s\r\n", i, call.memUsage, call.fileName, call.entryName)
+    fmt.Printf("% 5d: % 8d B %s->%s\r\n", i, call.memUsage, call.fileName, call.entryName)
     totalUsage += call.memUsage
   }
   fmt.Printf("Total stack usage: %d Bytes\r\n", totalUsage)
+  
+  for i := range suCalls {
+    suCalls[i].memUsagePercent = (float32(suCalls[i].memUsage) / float32(totalUsage))
+  }
 
   if (len(suFiles) < 1) {
     fmt.Println("There are no .su files.")
@@ -118,4 +124,9 @@ func main() {
   // for _, f_name := range suFiles {
   //   fmt.Println(f_name)
   // }
+
+  for {
+  	drawGUI(suCalls, totalUsage)
+  	time.Sleep(26 * time.Millisecond)
+  }
 }
