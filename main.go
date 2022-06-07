@@ -111,7 +111,7 @@ func main() {
     totalUsage += call.memUsage
   }
   fmt.Printf("Total stack usage: %d Bytes\r\n", totalUsage)
-  
+
   for i := range suCalls {
     suCalls[i].memUsagePercent = (float32(suCalls[i].memUsage) / float32(totalUsage))
   }
@@ -124,6 +124,10 @@ func main() {
   // for _, f_name := range suFiles {
   //   fmt.Println(f_name)
   // }
+
+  // Disable cursor
+  // fmt.Println("\e[?25l")
+  // defer fmt.Println("\e[?25h")
 
   for {
   	drawGUI(suCalls, totalUsage)

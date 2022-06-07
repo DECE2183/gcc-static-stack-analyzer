@@ -1,7 +1,6 @@
 package main
 
 //#cgo CXXFLAGS: -I${SRCDIR}/FTXUI/include -std=c++17 -fstack-usage
-//#cgo CFLAGS: -fstack-usage
 //#cgo LDFLAGS: -L${SRCDIR}/FTXUI/build -lftxui-screen -lftxui-dom -lftxui-component
 /*
 #include <stdlib.h>
