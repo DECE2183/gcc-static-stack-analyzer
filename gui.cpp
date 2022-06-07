@@ -6,7 +6,7 @@
 #include <iostream>                 // for endl, cout, ostream
 #include <string>                   // for basic_string, allocator, string
 #include <vector>                   // for vector
- 
+
 #include "ftxui/dom/node.hpp"  // for Render
 #include "ftxui/screen/color.hpp"  // for Color, Color::Blue, Color::Cyan, Color::White, ftxui
 
@@ -19,8 +19,7 @@ Element createLine(int indx, const char *file, const char *entry, int line, int 
     text(to_string(indx)) | size(WIDTH, EQUAL, 6),
     separator(),
     text(file) | flex,
-    separator(),
-    text(entry) | flex,
+    text(entry),
     separator(),
     text(to_string(line) + ":" + to_string(column)) | size(WIDTH, EQUAL, 10),
     separator(),
@@ -47,20 +46,22 @@ void draw(stack_call_t *calls, int calls_count, int total_mem)
 
   auto document = window(text("Stack"), {
     vbox({
-      vbox({
-        stack_list
+      hflow({
+        vbox({
+          stack_list
+        }) | flex,
       }) | border | flex,
       hbox({
         text("Total usage: " + to_string(total_mem) + " B") | flex,
       }) | border,
 	})
   });
-  
+
   auto screen = Screen::Create(Dimension::Full());
   Render(screen, document);
   cout << reset_position;
   screen.Print();
   reset_position = screen.ResetPosition();
-  
+
   //std::cout << std::endl;
 }

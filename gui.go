@@ -1,6 +1,6 @@
 package main
 
-//#cgo CXXFLAGS: -I/usr/include/c++/12.1.0 -I${SRCDIR}/FTXUI/include -std=c++17 -fstack-usage
+//#cgo CXXFLAGS: -I${SRCDIR}/FTXUI/include -std=c++17 -fstack-usage
 //#cgo CFLAGS: -fstack-usage
 //#cgo LDFLAGS: -L${SRCDIR}/FTXUI/build -lftxui-screen -lftxui-dom -lftxui-component
 /*
@@ -22,7 +22,7 @@ func drawGUI(calls []StackCall, totalMem int) {
 		newCall.file_name = C.CString(call.fileName)
 		newCall.entry_name = C.CString(call.entryName)
 		newCall.qualifiers = C.CString(call.qualifiers)
-		
+
 		ccalls = append(ccalls, newCall);
 	}
 	defer func() {
@@ -30,10 +30,10 @@ func drawGUI(calls []StackCall, totalMem int) {
 			C.free(unsafe.Pointer(ccalls[i].file_name))
 			C.free(unsafe.Pointer(ccalls[i].entry_name))
 			C.free(unsafe.Pointer(ccalls[i].qualifiers))
-		}	
+		}
 	}()
 
 	ptr := (*C.stack_call_t)(&ccalls[0])
-	
+
 	C.draw(ptr, C.int(len(calls)), C.int(totalMem))
 }
