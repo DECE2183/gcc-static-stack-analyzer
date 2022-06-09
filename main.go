@@ -8,14 +8,8 @@ import (
   "regexp"
   "strings"
   "sort"
-  "time"
+  // "time"
   // "strconv"
-)
-
-const (
-  suFileRegexp = `[.]su$`
-  suFileNumbers = `[0-9]+[: ]*?`
-  suFileLine = `[a-zA-Z0-9:\s./_]+[\n]`
 )
 
 type StackCall struct {
@@ -27,6 +21,21 @@ type StackCall struct {
   entryName string
   qualifiers string
 }
+
+type StackInfo struct {
+  calls []StackCall
+  totalMemUsage int
+}
+
+const (
+  suFileRegexp = `[.]su$`
+  suFileNumbers = `[0-9]+[: ]*?`
+  suFileLine = `[a-zA-Z0-9:\s./_]+[\n]`
+)
+
+var (
+  stackInfo StackInfo
+)
 
 func stringUnspace(s string) string {
   re, _ := regexp.Compile(`\S+`) //(`[a-zA-Z0-9:_/.-=%+]+`)
@@ -83,7 +92,6 @@ func main() {
 
   // Find and analyze all .su files
   var suFiles []string;
-  var suCalls []StackCall;
   fs.WalkDir(projFS, ".", func (path string, dir fs.DirEntry, err error) error {
     if (err != nil) {
       return fs.SkipDir
@@ -96,24 +104,24 @@ func main() {
         return fError
       }
       fileString := string(fileContent)
-      parseFile(&suCalls, fileString)
+      parseFile(&stackInfo.calls, fileString)
     }
     return nil
   })
 
-  sort.SliceStable(suCalls, func(i, j int) bool {
-    return suCalls[i].memUsage > suCalls[j].memUsage
+  sort.SliceStable(stackInfo.calls, func(i, j int) bool {
+    return stackInfo.calls[i].memUsage > stackInfo.calls[j].memUsage
   })
 
-  totalUsage := 0
-  for i, call := range suCalls {
-    fmt.Printf("% 5d: % 8d B %s->%s\r\n", i, call.memUsage, call.fileName, call.entryName)
-    totalUsage += call.memUsage
+  stackInfo.totalMemUsage = 0
+  for _, call := range stackInfo.calls {
+    // fmt.Printf("% 5d: % 8d B %s->%s\r\n", i, call.memUsage, call.fileName, call.entryName)
+    stackInfo.totalMemUsage += call.memUsage
   }
-  fmt.Printf("Total stack usage: %d Bytes\r\n", totalUsage)
+  fmt.Printf("Total stack usage: %d Bytes\r\n", stackInfo.totalMemUsage)
 
-  for i := range suCalls {
-    suCalls[i].memUsagePercent = (float32(suCalls[i].memUsage) / float32(totalUsage))
+  for i := range stackInfo.calls {
+    stackInfo.calls[i].memUsagePercent = (float32(stackInfo.calls[i].memUsage) / float32(stackInfo.totalMemUsage))
   }
 
   if (len(suFiles) < 1) {
@@ -129,8 +137,5 @@ func main() {
   // fmt.Println("\e[?25l")
   // defer fmt.Println("\e[?25h")
 
-  for {
-  	drawGUI(suCalls, totalUsage)
-  	time.Sleep(26 * time.Millisecond)
-  }
+  startGUI(&stackInfo)
 }
