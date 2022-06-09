@@ -116,7 +116,7 @@ func main() {
   }
 
   if (len(suFiles) < 1) {
-    fmt.Println("There are no .su files.")
+    fmt.Println("There are no .su files. Be sure to add \"-fstack-usage -fcallgraph-info=su\" arguments to the build command.")
     os.Exit(22)
   }
 
