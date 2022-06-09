@@ -4,8 +4,8 @@ import (
 	"io"
 	"log"
 	"fmt"
-	// "os"
-	// "golang.org/x/term"
+	"os"
+	"golang.org/x/term"
 	// "time"
 	// "strings"
 	"github.com/charmbracelet/bubbles/list"
@@ -23,13 +23,14 @@ const (
 type model struct {
 	stack *StackInfo
 	stackList list.Model
-
+	filterInput bool
+	filterEnabled bool
 	page modelPage
 }
 
 // List item interface
 func (i StackCall) FilterValue() string {
-	return ""
+	return i.entryName
 }
 type callListItemDelegate struct{}
 
@@ -73,9 +74,7 @@ var (
 												PaddingLeft(2).
 												Border(lipgloss.ThickBorder(), false, false, true, false).
 										    BorderForeground(lipgloss.Color("#22c2f2")).
-										    // BorderBackground(lipgloss.Color("#07171c")).
 												Foreground(lipgloss.Color("#22c2f2"))
-												// Background(lipgloss.Color("#07171c"))
 	listFileNameStyle = lipgloss.NewStyle()
 	listEntryNameStyle = lipgloss.NewStyle().
 												MarginLeft(6)
@@ -87,7 +86,7 @@ var (
 	helpStyle         = list.DefaultStyles().HelpStyle.
 												PaddingLeft(4).
 												PaddingBottom(1)
-	quitTextStyle     = lipgloss.NewStyle().
+	titleTextStyle    = lipgloss.NewStyle().
 												Margin(1, 0, 2, 4)
 )
 
@@ -106,11 +105,12 @@ func startGUI(stack *StackInfo) {
 	}
 
 	m.stackList.Title = "Stack"
-	m.stackList.SetShowStatusBar(true)
-	m.stackList.SetFilteringEnabled(false)
+	// m.stackList.SetShowStatusBar(true)
+	// m.stackList.SetFilteringEnabled(true)
 	m.stackList.Styles.Title = titleStyle
 	m.stackList.Styles.PaginationStyle = paginationStyle
 	m.stackList.Styles.HelpStyle = helpStyle
+	m.stackList.SetSize(256, 256)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if err := p.Start(); err != nil {
@@ -119,14 +119,15 @@ func startGUI(stack *StackInfo) {
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return tea.EnterAltScreen
 }
 
 func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
 
 	case tea.WindowSizeMsg:
-		m.resize(msg.Width, msg.Height)
+		// fmt.Printf("W: %d H: %d", msg.Width, msg.Height)
+		m.resize()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -134,15 +135,35 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.page {
 
 		case pageMain:
-			switch keypress {
-			case "q", "esc", "ctrl+c":
-				m.page = pageQuit
-				return m, tea.Quit
-			case "enter":
-				m.page = pageInfo
-				return m, nil
+
+			if m.filterInput {
+				switch keypress {
+				case "esc":
+					m.filterInput = false
+				case"enter":
+					m.filterInput = false
+					m.filterEnabled = true
+				}
+			} else {
+				switch keypress {
+				case "/":
+					m.filterInput = true
+				case "esc":
+					if m.filterEnabled {
+						m.filterEnabled = false
+					} else {
+						m.page = pageQuit
+						return m, tea.Quit
+					}
+				case "q", "ctrl+c":
+					m.page = pageQuit
+					return m, tea.Quit
+				case "enter":
+					m.page = pageInfo
+					return m, nil
+				}
 			}
-		
+
 			var cmd tea.Cmd
 			m.stackList, cmd = m.stackList.Update(message)
 			return m, cmd
@@ -169,19 +190,26 @@ func (m model) View() string {
 	// m.stackList.SetWidth(physicalWidth)
 	// m.stackList.SetHeight(physicalHeigth - 2)
 
+	m.resize()
+
 	switch m.page {
 	case pageMain:
 		return "\n" + m.stackList.View()
 	case pageInfo:
-		return quitTextStyle.Render("Info.")
+		str := titleTextStyle.Render("Info.")
+		str += titleTextStyle.Render(m.stackList.SelectedItem().(StackCall).entryName)
+		return str
 	case pageQuit:
-		return quitTextStyle.Render("Not hungry? That’s cool.")
+		str := titleTextStyle.Render("Realy quit?")
+		return str
 	}
 
 	return ""
 }
 
-func (m *model) resize(w, h int) {
+func (m *model) resize() {
+	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
+
 	itemStyle = itemStyle.MaxWidth(w - 2).Width(w)
 	selectedItemStyle = selectedItemStyle.MaxWidth(w - 2).Width(w)
 
