@@ -4,7 +4,7 @@ import (
   "fmt"
   "os"
   // "io"
-  "io/fs"
+  // "io/fs"
   "regexp"
   "strings"
   "sort"
@@ -31,6 +31,8 @@ const (
   suFileRegexp = `[.]su$`
   suFileNumbers = `[0-9]+[: ]*?`
   suFileLine = `[a-zA-Z0-9:\s./_]+[\n]`
+
+  ciFileRegexp = `[.]ci$`
 )
 
 var (
@@ -44,7 +46,7 @@ func stringUnspace(s string) string {
 }
 
 func stringUndrive(s string) string {
-  re, _ := regexp.Compile(`[A-Z]:[/\\]`)
+  re, _ := regexp.Compile(`[a-zA-Z]:[/\\]`)
   if (re.MatchString(s)) {
     return s[2:]
   }
@@ -80,6 +82,7 @@ func main() {
   _ = regexp.MustCompile(suFileRegexp)
   _ = regexp.MustCompile(suFileNumbers)
   _ = regexp.MustCompile(suFileLine)
+  _ = regexp.MustCompile(ciFileRegexp)
 
   if (len(os.Args) < 2) {
     fmt.Println("You must provide a project path as an argument.")
@@ -87,26 +90,14 @@ func main() {
   }
 
   projPath := os.Args[1]
-  projFS := os.DirFS(projPath)
+  // projFS := os.DirFS(projPath)
   fmt.Printf("Project to analyze: %s\r\n", projPath)
 
   // Find and analyze all .su files
-  var suFiles []string;
-  fs.WalkDir(projFS, ".", func (path string, dir fs.DirEntry, err error) error {
-    if (err != nil) {
-      return fs.SkipDir
-    }
-    match, _ := regexp.MatchString(suFileRegexp, path)
-    if (match) {
-      suFiles = append(suFiles, path)
-      fileContent, fError := os.ReadFile(fmt.Sprintf("%s/%s", projPath, path))
-      if (fError != nil) {
-        return fError
-      }
-      fileString := string(fileContent)
-      parseFile(&stackInfo.calls, fileString)
-    }
-    return nil
+  var suFiles []string
+  EachFile(projPath, suFileRegexp, func(path, content string) {
+    suFiles = append(suFiles, path)
+    parseFile(&stackInfo.calls, content)
   })
 
   sort.SliceStable(stackInfo.calls, func(i, j int) bool {
@@ -129,6 +120,21 @@ func main() {
     os.Exit(22)
   }
 
+
+  // Find all .ci files
+  var ciFiles []string
+  var ciGraphs []CodeGraphNode
+  EachFile(projPath, ciFileRegexp, func(path, content string) {
+    ciFiles = append(ciFiles, path)
+    graphs, err := ParseCiFile(content)
+    if err != nil {
+      fmt.Println(err)
+      return
+    }
+    ciGraphs = append(ciGraphs, graphs...)
+  })
+
+
   // for _, f_name := range suFiles {
   //   fmt.Println(f_name)
   // }
@@ -137,5 +143,5 @@ func main() {
   // fmt.Println("\e[?25l")
   // defer fmt.Println("\e[?25h")
 
-  startGUI(&stackInfo)
+  // startGUI(&stackInfo)
 }
