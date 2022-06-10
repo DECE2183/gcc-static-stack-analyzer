@@ -52,7 +52,7 @@ func main() {
   })
 
   if (len(ciGraph.ChildNodes) < 1) {
-    fmt.Println("There are no .su files. Be sure to add \"-fstack-usage -fcallgraph-info=su\" arguments to the build command.")
+    fmt.Println("There are no .ci files. Be sure to add \"-fcallgraph-info=su\" arguments to the build command.")
     os.Exit(22)
   }
 
