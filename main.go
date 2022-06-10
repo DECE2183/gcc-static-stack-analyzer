@@ -56,11 +56,12 @@ func main() {
     os.Exit(22)
   }
 
+  worstStackUsage := ciGraph.CalcStackUsage()
+
   sort.SliceStable(ciGraph.ChildNodes, func(i, j int) bool {
-    return ciGraph.ChildNodes[i].SelfStackUsage > ciGraph.ChildNodes[j].SelfStackUsage
+    return ciGraph.ChildNodes[i].MaxStackUsage > ciGraph.ChildNodes[j].MaxStackUsage
   })
 
-  worstStackUsage := ciGraph.CalcStackUsage()
   fmt.Printf("Worst stack usage: %d Bytes\r\n", worstStackUsage)
 
   startGUI(&ciGraph)

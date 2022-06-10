@@ -49,8 +49,8 @@ func (d callListItemDelegate) Render(w io.Writer, m list.Model, index int, listI
 		return
 	}
 
-	line1 := fmt.Sprintf("%4d  %s %5d:%d", index + 1, listFileNameStyle.Render(item.FileName), item.Line, item.Column)
-	line2 := listEntryNameStyle.Render(fmt.Sprintf("-> %s ", item.EntryName)) + listMemUsageStyle.Render(fmt.Sprintf("%d B", item.SelfStackUsage))
+	line1 := fmt.Sprintf("%4d  %s     %5d:%d", index + 1, listFileNameStyle.Render(item.FileName), item.Line, item.Column)
+	line2 := listEntryNameStyle.Render(fmt.Sprintf("-> %s ", item.EntryName)) + listMemUsageStyle.Render(fmt.Sprintf("%d B | %d B", item.MaxStackUsage, item.SelfStackUsage))
 
 	var fn func(string) string
 
@@ -212,7 +212,7 @@ func (m *model) resize() {
 	listFileNameStyle = listFileNameStyle.MaxWidth(namew).Width(w * 2)
 	listEntryNameStyle = listEntryNameStyle.MaxWidth(namew + 6).Width(w * 2)
 
-	listMemUsageStyle.Width(8)
+	listMemUsageStyle.Width(14)
 
 	m.stackList.SetSize(w, h - 2)
 }

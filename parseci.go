@@ -1,7 +1,6 @@
 package main
 
 import (
-  "fmt"
   "strings"
   "strconv"
 )
@@ -14,7 +13,7 @@ type CodeGraphNode struct {
   Line int
   Column int
   SelfStackUsage int
-  TotalStackUsage int
+  MaxStackUsage int
   NodeName string
   FileName string
   EntryName string
@@ -80,19 +79,19 @@ func parseNode(line string) CodeGraphNode {
 func (baseNode *CodeGraphNode) parseEdge(line string) {
   var sourceNode, targetNode *CodeGraphNode
 
-  sourceStart := strings.Index(line, "sourcename: \"") + 8
+  sourceStart := strings.Index(line, "sourcename: \"") + 13
   sourceEnd := sourceStart + strings.Index(line[sourceStart:], "\"")
-  sourcename := line[sourceStart:sourceEnd]
+  sourceName := line[sourceStart:sourceEnd]
 
-  targetStart := strings.Index(line, "targetname: \"") + 8
+  targetStart := strings.Index(line, "targetname: \"") + 13
   targetEnd := targetStart + strings.Index(line[targetStart:], "\"")
-  targetname := line[targetStart:targetEnd]
+  targetName := line[targetStart:targetEnd]
 
   for _, nodePtr := range baseNode.ChildNodes {
-    if nodePtr.NodeName == sourcename {
+    if nodePtr.NodeName == sourceName {
       sourceNode = nodePtr
     }
-    if nodePtr.NodeName == targetname {
+    if nodePtr.NodeName == targetName {
       targetNode = nodePtr
     }
   }
@@ -115,7 +114,6 @@ func (baseNode *CodeGraphNode) parseGraph(name, content string) {
     if strings.Contains(line, "node: {") {
       node := parseNode(line)
       baseNode.ChildNodes = append(baseNode.ChildNodes, &node)
-      // fmt.Printf("Node: %v\n", node)
     } else if strings.Contains(line, "edge: {") {
       baseNode.parseEdge(line)
     }
@@ -130,8 +128,6 @@ func ParseCiFile(content string) (CodeGraphNode, error) {
     graphNameStart := graphStart + strings.Index(content[graphStart:], "\"") + 1
     graphNameEnd := graphNameStart + strings.Index(content[graphNameStart:], "\"")
     graphName := content[graphNameStart:graphNameEnd]
-
-    fmt.Printf("Found graph: \"%s\"\n", graphName)
 
     graphStart = graphStart + strings.Index(content[graphStart:], "\n") + 1
     graphEnd := graphStart + strings.LastIndex(content[graphStart:], "}\r\n")
@@ -149,12 +145,18 @@ func ParseCiFile(content string) (CodeGraphNode, error) {
 }
 
 func (nodePtr *CodeGraphNode) CalcStackUsage() int {
-  nodePtr.TotalStackUsage = nodePtr.SelfStackUsage
+  nodePtr.MaxStackUsage = nodePtr.SelfStackUsage
+  maxMem := 0
+
   for _, childNodePtr := range nodePtr.ChildNodes {
-    if childNodePtr == nodePtr {
-      continue
+    if childNodePtr != nodePtr {
+      nodeMaxMem := childNodePtr.CalcStackUsage()
+      if nodeMaxMem > maxMem {
+        maxMem = nodeMaxMem
+      }
     }
-    nodePtr.TotalStackUsage += childNodePtr.CalcStackUsage()
   }
-  return nodePtr.TotalStackUsage
+
+  nodePtr.MaxStackUsage = nodePtr.SelfStackUsage + maxMem
+  return nodePtr.MaxStackUsage
 }
