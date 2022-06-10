@@ -3,6 +3,7 @@ package main
 import (
   "fmt"
   "strings"
+  "strconv"
 )
 
 type ParseError struct {
@@ -10,11 +11,15 @@ type ParseError struct {
 }
 
 type CodeGraphNode struct {
-  FileName string
-  EntryName string
   Line int
   Column int
-  ChildNodes []CodeGraphNode
+  SelfStackUsage int
+  TotalStackUsage int
+  NodeName string
+  FileName string
+  EntryName string
+  Qualifiers []string
+  ChildNodes []*CodeGraphNode
 }
 
 func (e *ParseError) Error() string {
@@ -22,30 +27,103 @@ func (e *ParseError) Error() string {
 }
 
 func parseNode(line string) CodeGraphNode {
+  var newNode CodeGraphNode
 
-}
+  titleStart := strings.Index(line, "title: \"") + 8
+  titleEnd := titleStart + strings.Index(line[titleStart:], "\"")
+  title := line[titleStart:titleEnd]
 
-func (graph *CodeGraphNode) parseEdge(line string) {
+  labelStart := strings.Index(line, "label: \"") + 8
+  labelEnd := labelStart + strings.Index(line[labelStart:], "\"")
+  label := line[labelStart:labelEnd]
 
-}
+  decorators := strings.Split(label, "\\n")
 
-func parseGraph(name, content string) CodeGraphNode {
-  var newGraph CodeGraphNode
-
-  var lines := strings.Split(content, "\r\n")
-  for i, line := range lines {
-    if strings.Contains(line, "node: {") {
-      newGraph.ChildNodes = append(newGraph.ChildNodes, parseNode(line))
-    } else if strings.Contains(line, "edge: {") {
-      newGraph.parseEdge(line)
+  // Try to get stack usage
+  if len(decorators) > 2 {
+    if strings.Contains(decorators[2], "bytes") {
+      newNode.SelfStackUsage, _ = strconv.Atoi(decorators[2][:strings.Index(decorators[2], " ")])
+      qualifiersStart := strings.Index(decorators[2], "(") + 1
+      if qualifiersStart > 0 {
+        qualifiersEnd := qualifiersStart + strings.Index(decorators[2][qualifiersStart:], ")")
+        newNode.Qualifiers = strings.Split(decorators[2][qualifiersStart:qualifiersEnd], ",")
+      }
+    } else {
+      decorators[1] += "\\n" + decorators[2]
+      decorators = decorators[:2]
     }
   }
 
-  return newGraph
+  newNode.NodeName = title
+  newNode.EntryName = decorators[0]
+  newNode.FileName = strings.ReplaceAll(decorators[1], "\\", "/")
+
+  // Find column index
+  numIndex := strings.LastIndex(newNode.FileName, ":")
+  newNode.Column, _ = strconv.Atoi(newNode.FileName[numIndex + 1:])
+  if numIndex < 0 {
+    return newNode
+  }
+  newNode.FileName = newNode.FileName[:numIndex]
+
+  // Find line index
+  numIndex = strings.LastIndex(newNode.FileName, ":")
+  newNode.Line, _ = strconv.Atoi(newNode.FileName[numIndex + 1:])
+  if numIndex < 0 {
+    return newNode
+  }
+  newNode.FileName = newNode.FileName[:numIndex]
+
+  return newNode
 }
 
-func ParseCiFile(content string) ([]CodeGraphNode, error) {
-  var graphs []CodeGraphNode
+func (baseNode *CodeGraphNode) parseEdge(line string) {
+  var sourceNode, targetNode *CodeGraphNode
+
+  sourceStart := strings.Index(line, "sourcename: \"") + 8
+  sourceEnd := sourceStart + strings.Index(line[sourceStart:], "\"")
+  sourcename := line[sourceStart:sourceEnd]
+
+  targetStart := strings.Index(line, "targetname: \"") + 8
+  targetEnd := targetStart + strings.Index(line[targetStart:], "\"")
+  targetname := line[targetStart:targetEnd]
+
+  for _, nodePtr := range baseNode.ChildNodes {
+    if nodePtr.NodeName == sourcename {
+      sourceNode = nodePtr
+    }
+    if nodePtr.NodeName == targetname {
+      targetNode = nodePtr
+    }
+  }
+
+  if sourceNode == nil || targetNode == nil {
+    return
+  }
+
+  if sourceNode == targetNode {
+    sourceNode.Qualifiers = append(sourceNode.Qualifiers, "recursive")
+  }
+
+  sourceNode.ChildNodes = append(sourceNode.ChildNodes, targetNode)
+}
+
+func (baseNode *CodeGraphNode) parseGraph(name, content string) {
+  lines := strings.Split(content, "\r\n")
+
+  for _, line := range lines {
+    if strings.Contains(line, "node: {") {
+      node := parseNode(line)
+      baseNode.ChildNodes = append(baseNode.ChildNodes, &node)
+      // fmt.Printf("Node: %v\n", node)
+    } else if strings.Contains(line, "edge: {") {
+      baseNode.parseEdge(line)
+    }
+  }
+}
+
+func ParseCiFile(content string) (CodeGraphNode, error) {
+  var baseNode CodeGraphNode
   graphStart := strings.Index(content, "graph: { ")
 
   for graphStart > -1 {
@@ -56,16 +134,27 @@ func ParseCiFile(content string) ([]CodeGraphNode, error) {
     fmt.Printf("Found graph: \"%s\"\n", graphName)
 
     graphStart = graphStart + strings.Index(content[graphStart:], "\n") + 1
-    graphEnd := graphStart + strings.Index(content[graphStart:], "}\r\n")
-    graphs = append(graphs, parseGraph(graphName, content[graphStart:graphEnd]))
+    graphEnd := graphStart + strings.LastIndex(content[graphStart:], "}\r\n")
+    baseNode.parseGraph(graphName, content[graphStart:graphEnd])
 
     content = content[graphEnd+1:]
     graphStart = strings.Index(content, "graph: { ")
   }
 
-  if (len(graphs) > 0) {
-    return graphs, nil
+  if (len(baseNode.ChildNodes) > 0) {
+    return baseNode, nil
   } else {
-    return graphs, &ParseError{"Graphs not found."}
+    return baseNode, &ParseError{"Graphs not found."}
   }
+}
+
+func (nodePtr *CodeGraphNode) CalcStackUsage() int {
+  nodePtr.TotalStackUsage = nodePtr.SelfStackUsage
+  for _, childNodePtr := range nodePtr.ChildNodes {
+    if childNodePtr == nodePtr {
+      continue
+    }
+    nodePtr.TotalStackUsage += childNodePtr.CalcStackUsage()
+  }
+  return nodePtr.TotalStackUsage
 }

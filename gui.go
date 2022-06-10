@@ -21,7 +21,7 @@ const (
 )
 
 type model struct {
-	stack *StackInfo
+	baseGraph *CodeGraphNode
 	stackList list.Model
 	filterInput bool
 	filterEnabled bool
@@ -29,8 +29,8 @@ type model struct {
 }
 
 // List item interface
-func (i StackCall) FilterValue() string {
-	return i.entryName
+func (i CodeGraphNode) FilterValue() string {
+	return i.NodeName
 }
 type callListItemDelegate struct{}
 
@@ -44,13 +44,13 @@ func (d callListItemDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd {
 	return nil
 }
 func (d callListItemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
-	item, ok := listItem.(StackCall)
+	item, ok := listItem.(CodeGraphNode)
 	if !ok {
 		return
 	}
 
-	line1 := fmt.Sprintf("%4d  %s %5d:%d", index + 1, listFileNameStyle.Render(item.fileName), item.line, item.column)
-	line2 := listEntryNameStyle.Render(fmt.Sprintf("-> %s ", item.entryName)) + listMemUsageStyle.Render(fmt.Sprintf("9%d B", item.memUsage))
+	line1 := fmt.Sprintf("%4d  %s %5d:%d", index + 1, listFileNameStyle.Render(item.FileName), item.Line, item.Column)
+	line2 := listEntryNameStyle.Render(fmt.Sprintf("-> %s ", item.EntryName)) + listMemUsageStyle.Render(fmt.Sprintf("%d B", item.SelfStackUsage))
 
 	var fn func(string) string
 
@@ -69,7 +69,7 @@ var (
 	itemStyle         = lipgloss.NewStyle().
 												PaddingLeft(2).
 												Border(lipgloss.NormalBorder(), false, false, true, false).
-										    BorderForeground(lipgloss.Color("#3C3C3C"))
+										    BorderForeground(lipgloss.Color("#4C4C4C"))
 	selectedItemStyle = lipgloss.NewStyle().
 												PaddingLeft(2).
 												Border(lipgloss.ThickBorder(), false, false, true, false).
@@ -91,16 +91,16 @@ var (
 )
 
 
-func startGUI(stack *StackInfo) {
+func startGUI(baseGraph *CodeGraphNode) {
 	// physicalWidth, physicalHeigth, _ := term.GetSize(int(os.Stdout.Fd()))
 
-	listItems := make([]list.Item, len(stack.calls))
-	for i, call := range stack.calls {
-		listItems[i] = call //callListItem(fmt.Sprintf("%s -> %s [%d:%d]", call.fileName, call.entryName, call.line, call.column))
+	listItems := make([]list.Item, len(baseGraph.ChildNodes))
+	for i, nodePtr := range baseGraph.ChildNodes {
+		listItems[i] = *nodePtr //callListItem(fmt.Sprintf("%s -> %s [%d:%d]", call.fileName, call.entryName, call.line, call.column))
 	}
 
 	m := model{
-		stack: stack,
+		baseGraph: baseGraph,
 		stackList: list.New(listItems, callListItemDelegate{}, 512, 512),
 	}
 
@@ -185,11 +185,6 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	// physicalWidth, physicalHeigth, _ := term.GetSize(int(os.Stdout.Fd()))
-	// m.resize(physicalWidth, physicalHeigth)
-	// m.stackList.SetWidth(physicalWidth)
-	// m.stackList.SetHeight(physicalHeigth - 2)
-
 	m.resize()
 
 	switch m.page {
@@ -197,7 +192,7 @@ func (m model) View() string {
 		return "\n" + m.stackList.View()
 	case pageInfo:
 		str := titleTextStyle.Render("Info.")
-		str += titleTextStyle.Render(m.stackList.SelectedItem().(StackCall).entryName)
+		str += titleTextStyle.Render(m.stackList.SelectedItem().(CodeGraphNode).EntryName)
 		return str
 	case pageQuit:
 		str := titleTextStyle.Render("Realy quit?")
@@ -214,8 +209,8 @@ func (m *model) resize() {
 	selectedItemStyle = selectedItemStyle.MaxWidth(w - 2).Width(w)
 
 	namew := w - 26
-	listFileNameStyle = listFileNameStyle.MaxWidth(namew).Width(namew + 2)
-	listEntryNameStyle = listEntryNameStyle.MaxWidth(namew + 6).Width(namew + 8)
+	listFileNameStyle = listFileNameStyle.MaxWidth(namew).Width(w * 2)
+	listEntryNameStyle = listEntryNameStyle.MaxWidth(namew + 6).Width(w * 2)
 
 	listMemUsageStyle.Width(8)
 

@@ -10,6 +10,7 @@ import (
 type EachCallback func(path, content string)
 
 func EachFile(path, pattern string, callback EachCallback) {
+  _ = regexp.MustCompile(pattern)
   dirFS := os.DirFS(path)
 
   fs.WalkDir(dirFS, ".", func (_path string, _dir fs.DirEntry, _err error) error {
