@@ -1,6 +1,8 @@
 # GCC static stack analyzer
 Terminal UI static stack analysis tool for GCC compiler written in Go.
 
+![a relative link](assets/gcc-static-stack-analyzer.png?raw=true)
+
 ## Building
 ```Bash
 go mod tidy
