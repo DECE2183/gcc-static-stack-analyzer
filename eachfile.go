@@ -3,28 +3,26 @@ package main
 import (
   "io/fs"
   "os"
-  "regexp"
   "fmt"
+  "regexp"
 )
 
-type EachCallback func(path, content string)
+type EachCallback func(path string)
 
 func EachFile(path, pattern string, callback EachCallback) {
-  _ = regexp.MustCompile(pattern)
+  r, rerr := regexp.Compile(pattern)
+  if rerr != nil {
+    return
+  }
   dirFS := os.DirFS(path)
 
   fs.WalkDir(dirFS, ".", func (_path string, _dir fs.DirEntry, _err error) error {
     if (_err != nil) {
       return fs.SkipDir
     }
-    match, _ := regexp.MatchString(pattern, _path)
+    match := r.MatchString(_path)
     if (match) {
-      fileContent, fileError := os.ReadFile(fmt.Sprintf("%s/%s", path, _path))
-      if (fileError != nil) {
-        return fileError
-      }
-      fileString := string(fileContent)
-      callback(_path, fileString)
+      callback(fmt.Sprintf("%s/%s", path, _path))
     }
     return nil
   })

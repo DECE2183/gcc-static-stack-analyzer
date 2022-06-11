@@ -1,13 +1,13 @@
 package main
 
 import (
+  // "os"
 	"io"
 	"log"
 	"fmt"
-	"os"
-	"golang.org/x/term"
-	// "time"
-	// "strings"
+  "strings"
+	// "golang.org/x/term"
+  "github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -22,16 +22,31 @@ const (
 
 type model struct {
 	baseGraph *CodeGraphNode
+
 	stackList list.Model
+  codeViewport viewport.Model
+
 	filterInput bool
 	filterEnabled bool
 	page modelPage
+
+  width, height int
 }
 
 // List item interface
-func (i CodeGraphNode) FilterValue() string {
+type callListItem struct{*CodeGraphNode}
+
+func (i callListItem) Title() string {
+  return i.FileName
+}
+func (i callListItem) Description() string {
+  return i.EntryName
+}
+func (i callListItem) FilterValue() string {
 	return i.NodeName
 }
+
+// List delegate interface
 type callListItemDelegate struct{}
 
 func (d callListItemDelegate) Height() int {
@@ -44,7 +59,7 @@ func (d callListItemDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd {
 	return nil
 }
 func (d callListItemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
-	item, ok := listItem.(CodeGraphNode)
+	item, ok := listItem.(callListItem)
 	if !ok {
 		return
 	}
@@ -54,18 +69,26 @@ func (d callListItemDelegate) Render(w io.Writer, m list.Model, index int, listI
 
 	var fn func(string) string
 
-	if index == m.Index() {
-		fn = selectedItemStyle.Render
-	} else {
-		fn = itemStyle.Render
-	}
+  // Conditions
+	var (
+		isSelected  = index == m.Index()
+		emptyFilter = m.FilterState() == list.Filtering && m.FilterValue() == ""
+	)
+
+  if emptyFilter {
+    fn = itemStyle.Render
+  } else if isSelected && m.FilterState() != list.Filtering {
+    fn = selectedItemStyle.Render
+  } else {
+    fn = itemStyle.Render
+  }
 
 	fmt.Fprintf(w, fn(lipgloss.JoinVertical(lipgloss.Top, line1, line2)))
 }
 
 var (
 	titleStyle        = lipgloss.NewStyle().
-												MarginLeft(2)
+												MarginLeft(0)
 	itemStyle         = lipgloss.NewStyle().
 												PaddingLeft(2).
 												Border(lipgloss.NormalBorder(), false, false, true, false).
@@ -87,16 +110,27 @@ var (
 												PaddingLeft(4).
 												PaddingBottom(1)
 	titleTextStyle    = lipgloss.NewStyle().
-												Margin(1, 0, 2, 4)
+												Margin(1, 0, 1, 2)
+
+  viewPortStyle = lipgloss.NewStyle().
+                        MarginLeft(2)
+  viewportHeaderStyle = func() lipgloss.Style {
+		b := lipgloss.RoundedBorder()
+		b.Right = "├"
+		return lipgloss.NewStyle().Border(b, false, true, false, true).Padding(0, 1, 0, 1)
+	}()
+	viewportFooterStyle = func() lipgloss.Style {
+		b := lipgloss.RoundedBorder()
+		b.Left = "┤"
+		return titleStyle.Copy().Border(b, false, true, false, true).Padding(0, 1, 0, 1).Margin(0)
+	}()
 )
 
 
 func startGUI(baseGraph *CodeGraphNode) {
-	// physicalWidth, physicalHeigth, _ := term.GetSize(int(os.Stdout.Fd()))
-
 	listItems := make([]list.Item, len(baseGraph.ChildNodes))
 	for i, nodePtr := range baseGraph.ChildNodes {
-		listItems[i] = *nodePtr //callListItem(fmt.Sprintf("%s -> %s [%d:%d]", call.fileName, call.entryName, call.line, call.column))
+		listItems[i] = callListItem{nodePtr}
 	}
 
 	m := model{
@@ -104,15 +138,19 @@ func startGUI(baseGraph *CodeGraphNode) {
 		stackList: list.New(listItems, callListItemDelegate{}, 512, 512),
 	}
 
-	m.stackList.Title = "Stack"
-	// m.stackList.SetShowStatusBar(true)
-	// m.stackList.SetFilteringEnabled(true)
+	m.stackList.Title = "Functions"
+	m.stackList.SetShowStatusBar(true)
+	m.stackList.SetFilteringEnabled(true)
 	m.stackList.Styles.Title = titleStyle
 	m.stackList.Styles.PaginationStyle = paginationStyle
 	m.stackList.Styles.HelpStyle = helpStyle
 	m.stackList.SetSize(256, 256)
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+  m.codeViewport = viewport.New(256, 256)
+  m.codeViewport.HighPerformanceRendering = false
+  m.codeViewport.YPosition = 5
+
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if err := p.Start(); err != nil {
 		log.Fatal(err)
 	}
@@ -123,19 +161,21 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := message.(type) {
+  var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
 
+  switch msg := message.(type) {
 	case tea.WindowSizeMsg:
-		// fmt.Printf("W: %d H: %d", msg.Width, msg.Height)
-		m.resize()
+		m.resize(msg.Width, msg.Height)
 		return m, nil
 
 	case tea.KeyMsg:
 		keypress := msg.String()
+
 		switch m.page {
-
 		case pageMain:
-
 			if m.filterInput {
 				switch keypress {
 				case "esc":
@@ -160,13 +200,10 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Quit
 				case "enter":
 					m.page = pageInfo
+          m.codeViewport.SetContent(m.stackList.SelectedItem().(callListItem).CodeBlock)
 					return m, nil
 				}
 			}
-
-			var cmd tea.Cmd
-			m.stackList, cmd = m.stackList.Update(message)
-			return m, cmd
 
 		case pageInfo:
 			switch keypress {
@@ -181,19 +218,27 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	return m, nil
+  switch m.page {
+  case pageMain:
+    m.stackList, cmd = m.stackList.Update(message)
+    return m, cmd
+  case pageInfo:
+    m.codeViewport, cmd = m.codeViewport.Update(message)
+	  return m, cmd
+  }
+
+  cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
 }
 
 func (m model) View() string {
-	m.resize()
+	// m.resize()
 
 	switch m.page {
 	case pageMain:
 		return "\n" + m.stackList.View()
 	case pageInfo:
-		str := titleTextStyle.Render("Info.")
-		str += titleTextStyle.Render(m.stackList.SelectedItem().(CodeGraphNode).EntryName)
-		return str
+		return m.renderInfoPage()
 	case pageQuit:
 		str := titleTextStyle.Render("Realy quit?")
 		return str
@@ -202,8 +247,32 @@ func (m model) View() string {
 	return ""
 }
 
-func (m *model) resize() {
-	w, h, _ := term.GetSize(int(os.Stdout.Fd()))
+func (m *model) renderInfoPage() string {
+  var infoContent, line string
+
+  selectedItem := m.stackList.SelectedItem().(callListItem)
+
+  line = lipgloss.JoinVertical(lipgloss.Top, selectedItem.FileName, "-> " + selectedItem.EntryName)
+  infoContent = titleTextStyle.Render(line) + "\n"
+
+  viewportHeader := viewportHeaderStyle.Render("Code preview")
+  line = strings.Repeat("─", m.codeViewport.Width - lipgloss.Width(viewportHeader))
+  viewportHeader = lipgloss.JoinHorizontal(lipgloss.Center, viewportHeader, line)
+
+	viewportFooter := viewportFooterStyle.Render(fmt.Sprintf("%3.f%%", m.codeViewport.ScrollPercent() * 100))
+	line = strings.Repeat("─", m.codeViewport.Width - lipgloss.Width(viewportFooter))
+	viewportFooter = lipgloss.JoinHorizontal(lipgloss.Center, line, viewportFooter)
+
+  infoContent += viewportHeader + "\n\n"
+  infoContent += viewPortStyle.Render(m.codeViewport.View()) + "\n\n"
+  infoContent += viewportFooter
+
+  return infoContent
+}
+
+func (m *model) resize(w, h int) {
+  m.width, m.height = w, h
+	// w, h, _ := term.GetSize(int(os.Stdout.Fd()))
 
 	itemStyle = itemStyle.MaxWidth(w - 2).Width(w)
 	selectedItemStyle = selectedItemStyle.MaxWidth(w - 2).Width(w)
@@ -213,6 +282,9 @@ func (m *model) resize() {
 	listEntryNameStyle = listEntryNameStyle.MaxWidth(namew + 6).Width(w * 2)
 
 	listMemUsageStyle.Width(14)
+
+  m.codeViewport.Width = w - 2
+  m.codeViewport.Height = h - 10
 
 	m.stackList.SetSize(w, h - 2)
 }

@@ -1,8 +1,15 @@
 package main
 
 import (
+  "os"
+  "fmt"
   "strings"
   "strconv"
+  "regexp"
+)
+
+const (
+  windowsAbsolutePathRegexp = "[a-zA-Z]:/"
 )
 
 type ParseError struct {
@@ -17,12 +24,57 @@ type CodeGraphNode struct {
   NodeName string
   FileName string
   EntryName string
+  FullSourceFilePath string
+  CodeBlock string
   Qualifiers []string
   ChildNodes []*CodeGraphNode
 }
 
 func (e *ParseError) Error() string {
   return e.What
+}
+
+func getCodeBlock(filePath string, line int) string {
+  fileContent, fileError := os.ReadFile(filePath)
+  if fileError != nil {
+    return fmt.Sprintf("Unable to open source file \"%s\".\n", filePath)
+  }
+  content := string(fileContent)
+
+  var endlpos int
+
+  // Find proper line
+  for li := 0;  li < line - 1; li++ {
+    endlpos = strings.Index(content, "\n") + 1
+    if endlpos < 1 {
+      return fmt.Sprintf("There is no line #%d in source file \"%s\".\n", line, filePath)
+    }
+    content = content[endlpos:]
+  }
+
+  // Read code
+  bracesDepthIndex := 0
+  endlpos = strings.Index(content, "\n") + 1
+  if endlpos < 1 {
+    return fmt.Sprintf("Unable to find function start in source file \"%s\".\n", filePath)
+  }
+  codeString := content[:endlpos]
+  content = content[endlpos:]
+
+  if !(strings.Contains(codeString, ";") || strings.Contains(codeString, "}")) {
+    // Read all block content if it is not one line
+    bracesDepthIndex += strings.Count(codeString, "{")
+    for _, line := range strings.Split(content, "\n") {
+      bracesDepthIndex += strings.Count(line, "{")
+      codeString += line + "\n"
+      bracesDepthIndex -= strings.Count(line, "}")
+      if bracesDepthIndex <= 0 {
+        break
+      }
+    }
+  }
+
+  return codeString
 }
 
 func parseNode(line string) CodeGraphNode {
@@ -113,6 +165,13 @@ func (baseNode *CodeGraphNode) parseGraph(name, content string) {
   for _, line := range lines {
     if strings.Contains(line, "node: {") {
       node := parseNode(line)
+      winAbsPath, _ := regexp.MatchString(windowsAbsolutePathRegexp, node.FileName)
+      if node.FileName[:1] == "/" || winAbsPath {
+        node.FullSourceFilePath = node.FileName
+      } else {
+        node.FullSourceFilePath = baseNode.FullSourceFilePath + "/" + node.FileName
+      }
+      node.CodeBlock = getCodeBlock(node.FullSourceFilePath, node.Line)
       baseNode.ChildNodes = append(baseNode.ChildNodes, &node)
     } else if strings.Contains(line, "edge: {") {
       baseNode.parseEdge(line)
@@ -120,8 +179,20 @@ func (baseNode *CodeGraphNode) parseGraph(name, content string) {
   }
 }
 
-func ParseCiFile(content string) (CodeGraphNode, error) {
+func ParseCiFile(path string) (CodeGraphNode, error) {
   var baseNode CodeGraphNode
+
+  fileContent, fileError := os.ReadFile(path)
+  if fileError != nil {
+    return baseNode, &ParseError{"File read error."}
+  }
+  content := string(fileContent)
+  baseNode.FullSourceFilePath = strings.ReplaceAll(path, "\\", "/")
+  baseNode.FullSourceFilePath = baseNode.FullSourceFilePath[:strings.LastIndex(baseNode.FullSourceFilePath, "/")]
+  // baseNode.FullSourceFilePath = baseNode.FullSourceFilePath[:len(baseNode.FullSourceFilePath) - 2]
+  // if baseNode.FullSourceFilePath[len(baseNode.FullSourceFilePath) - 1:] == "/" {
+  // }
+
   graphStart := strings.Index(content, "graph: { ")
 
   for graphStart > -1 {

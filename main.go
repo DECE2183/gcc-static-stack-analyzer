@@ -36,14 +36,11 @@ func main() {
   }
 
   projPath := os.Args[1]
-  fmt.Printf("Project to analyze: %s\r\n", projPath)
 
   // Find all .ci files
-  var ciFiles []string
   var ciGraph CodeGraphNode
-  EachFile(projPath, ciFileRegexp, func(path, content string) {
-    ciFiles = append(ciFiles, path)
-    graph, err := ParseCiFile(content)
+  EachFile(projPath, ciFileRegexp, func(path string) {
+    graph, err := ParseCiFile(path)
     if err != nil {
       fmt.Println(err)
       return
@@ -56,13 +53,11 @@ func main() {
     os.Exit(22)
   }
 
-  worstStackUsage := ciGraph.CalcStackUsage()
+  _ = ciGraph.CalcStackUsage()
 
   sort.SliceStable(ciGraph.ChildNodes, func(i, j int) bool {
     return ciGraph.ChildNodes[i].MaxStackUsage > ciGraph.ChildNodes[j].MaxStackUsage
   })
-
-  fmt.Printf("Worst stack usage: %d Bytes\r\n", worstStackUsage)
 
   startGUI(&ciGraph)
 }
